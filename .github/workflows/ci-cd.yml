@@ -14,11 +14,11 @@ permissions:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: "254771353010"
-  ECR_REPOSITORY: ci-cd-pipeline
-  ECS_CLUSTER: ci-cd-cluster
-  ECS_SERVICE: ci-cd-service
-  ECS_TASK_FAMILY: ci-cd-task
-  ECS_CONTAINER: ci-cd-container
+  ECR_REPOSITORY: ci-cd-demo
+  ECS_CLUSTER: frdn-cluster
+  ECS_SERVICE: frdn-task-service
+  ECS_TASK_FAMILY: frdn-task
+  ECS_CONTAINER: frdn-container
 
 jobs:
   build-and-deploy:
@@ -31,7 +31,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::254771353010:role/GitHubActionsECSDeployRole
+          role-to-assume: arn:aws:iam::254771353010:role/GitHubActionsECSDeployFrdnRole
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS identity
