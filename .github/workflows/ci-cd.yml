@@ -29,12 +29,19 @@ jobs:
 
     steps:
 
-      # --------------------------------------------------
-      # 1. Checkout GitHub repository
-      # --------------------------------------------------
+      # ==================================================
+      # 1. Checkout source code
+      # ==================================================
       - name: Checkout source code
         uses: actions/checkout@v4
-        
+
+
+      # ==================================================
+      # 2. Debug GitHub OIDC token
+      # ==================================================
+      # This is temporarily kept so we can verify that
+      # GitHub is sending the expected OIDC claims.
+      # ==================================================
       - name: Debug GitHub OIDC token
         run: |
           TOKEN=$(curl -sS \
@@ -52,9 +59,10 @@ jobs:
             ref
           }'
 
-      # --------------------------------------------------
-      # 2. Configure AWS credentials using GitHub OIDC
-      # --------------------------------------------------
+
+      # ==================================================
+      # 3. Configure AWS credentials using OIDC
+      # ==================================================
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -62,24 +70,24 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
 
-      # --------------------------------------------------
-      # 3. Verify AWS authentication
-      # --------------------------------------------------
+      # ==================================================
+      # 4. Verify AWS identity
+      # ==================================================
       - name: Verify AWS identity
         run: |
           aws sts get-caller-identity
 
 
-      # --------------------------------------------------
-      # 4. Login to Amazon ECR
-      # --------------------------------------------------
+      # ==================================================
+      # 5. Login to Amazon ECR
+      # ==================================================
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
 
-      # --------------------------------------------------
-      # 5. Build Docker image and push to ECR
-      # --------------------------------------------------
+      # ==================================================
+      # 6. Build and push Docker image
+      # ==================================================
       - name: Build and push Docker image
         id: build
         run: |
@@ -88,45 +96,61 @@ jobs:
 
           LATEST_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest"
 
-          echo "Building Docker image:"
+          echo "========================================="
+          echo "Building Docker image"
+          echo "========================================="
+
+          echo "Image:"
           echo "$IMAGE_URI"
 
           docker build -t "$IMAGE_URI" .
 
-          echo "Creating latest tag..."
+          echo "========================================="
+          echo "Creating latest tag"
+          echo "========================================="
 
           docker tag "$IMAGE_URI" "$LATEST_URI"
 
-          echo "Pushing commit image..."
+          echo "========================================="
+          echo "Pushing commit image"
+          echo "========================================="
 
           docker push "$IMAGE_URI"
 
-          echo "Pushing latest image..."
+          echo "========================================="
+          echo "Pushing latest image"
+          echo "========================================="
 
           docker push "$LATEST_URI"
+
+          echo "========================================="
+          echo "Docker images pushed successfully"
+          echo "========================================="
 
           echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
 
-      # --------------------------------------------------
-      # 6. Get current ECS task definition
-      # --------------------------------------------------
+      # ==================================================
+      # 7. Get current ECS task definition
+      # ==================================================
       - name: Get current ECS task definition
         run: |
+
+          echo "Getting ECS task definition:"
+          echo "$ECS_TASK_FAMILY"
 
           aws ecs describe-task-definition \
             --task-definition "$ECS_TASK_FAMILY" \
             --query taskDefinition \
             --output json > task-definition.json
 
-          echo "Current ECS task definition:"
+          echo "Current task definition:"
           cat task-definition.json
 
 
-      # --------------------------------------------------
-      # 7. Create new ECS task definition
-      #    with the new Docker image
-      # --------------------------------------------------
+      # ==================================================
+      # 8. Create new ECS task definition JSON
+      # ==================================================
       - name: Create new ECS task definition revision
         id: task
         env:
@@ -134,7 +158,10 @@ jobs:
 
         run: |
 
-          echo "New Docker image:"
+          echo "========================================="
+          echo "New Docker image"
+          echo "========================================="
+
           echo "$IMAGE_URI"
 
           jq --arg IMAGE "$IMAGE_URI" \
@@ -159,38 +186,57 @@ jobs:
             )
             ' task-definition.json > new-task-definition.json
 
-          echo "New ECS task definition:"
+          echo "========================================="
+          echo "New task definition"
+          echo "========================================="
+
           cat new-task-definition.json
 
 
-      # --------------------------------------------------
-      # 8. Register new ECS task definition revision
-      # --------------------------------------------------
+      # ==================================================
+      # 9. Register new ECS task definition
+      # ==================================================
       - name: Register new ECS task definition
         id: register
         run: |
+
+          echo "Registering new ECS task definition..."
 
           TASK_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://new-task-definition.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
-          echo "New task definition:"
+          echo "========================================="
+          echo "New task definition registered"
+          echo "========================================="
+
           echo "$TASK_ARN"
 
           echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
 
 
-      # --------------------------------------------------
-      # 9. Update ECS service
-      # --------------------------------------------------
+      # ==================================================
+      # 10. Update ECS service
+      # ==================================================
       - name: Deploy new task definition to ECS
         env:
           TASK_ARN: ${{ steps.register.outputs.task_arn }}
 
         run: |
 
-          echo "Updating ECS service..."
+          echo "========================================="
+          echo "Updating ECS service"
+          echo "========================================="
+
+          echo "Cluster:"
+          echo "$ECS_CLUSTER"
+
+          echo "Service:"
+          echo "$ECS_SERVICE"
+
+          echo "Task Definition:"
+          echo "$TASK_ARN"
 
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
@@ -200,34 +246,48 @@ jobs:
           echo "ECS service update requested successfully."
 
 
-      # --------------------------------------------------
-      # 10. Wait until ECS deployment is stable
-      # --------------------------------------------------
+      # ==================================================
+      # 11. Wait for ECS deployment
+      # ==================================================
       - name: Wait for ECS service stability
         run: |
 
-          echo "Waiting for ECS service to become stable..."
+          echo "========================================="
+          echo "Waiting for ECS service to become stable"
+          echo "========================================="
 
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
 
-          echo "ECS service is stable."
+          echo "========================================="
+          echo "ECS service is stable"
+          echo "========================================="
 
 
-      # --------------------------------------------------
-      # 11. Deployment completed
-      # --------------------------------------------------
+      # ==================================================
+      # 12. Deployment completed
+      # ==================================================
       - name: Deployment completed
         run: |
 
           echo "========================================="
-          echo "   ECS DEPLOYMENT COMPLETED SUCCESSFULLY"
+          echo " ECS DEPLOYMENT COMPLETED SUCCESSFULLY "
           echo "========================================="
 
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Commit: $GITHUB_SHA"
-          echo "ECR Repository: $ECR_REPOSITORY"
-          echo "ECS Cluster: $ECS_CLUSTER"
-          echo "ECS Service: $ECS_SERVICE"
+          echo "Repository:"
+          echo "$GITHUB_REPOSITORY"
 
+          echo "Commit:"
+          echo "$GITHUB_SHA"
+
+          echo "ECR Repository:"
+          echo "$ECR_REPOSITORY"
+
+          echo "ECS Cluster:"
+          echo "$ECS_CLUSTER"
+
+          echo "ECS Service:"
+          echo "$ECS_SERVICE"
+
+          echo "Deployment finished successfully!"
