@@ -16,7 +16,7 @@ env:
   AWS_ACCOUNT_ID: "254771353010"
   ECR_REPOSITORY: ci-cd-demo
   ECS_CLUSTER: frdn-cluster
-  ECS_SERVICE: frdn-task-service
+  ECS_SERVICE: frdn-service
   ECS_TASK_FAMILY: frdn-task
   ECS_CONTAINER: frdn-container
 
